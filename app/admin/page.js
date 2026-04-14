@@ -8,10 +8,8 @@ export default function AdminPanel() {
   const [csvText, setCsvText] = useState('')
   const [listPlayerIds, setListPlayerIds] = useState('')
 
-  // 1. Fungsi buat upload data coin (CSV)
   const handleUpload = async () => {
     if (!csvText) return alert('Isi dulu datanya, Bos!')
-    
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return alert('Sesi abis, login lagi dah!')
 
@@ -29,13 +27,11 @@ export default function AdminPanel() {
       }
     }).filter(item => item["TO"])
 
-    // Pake upsert biar ga error kalo ada data yang sama persis
     const { error } = await supabase.from('coin_history').upsert(dataToInsert)
     if (error) alert('Gagal Upload: ' + error.message)
     else { alert('History Berhasil Masuk!'); setCsvText(''); }
   }
 
-  // 2. Fungsi buat nambah banyak ID sekaligus (Anti Error Duplicate)
   const addMultiplePlayers = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return alert('Login dulu!')
@@ -46,16 +42,23 @@ export default function AdminPanel() {
       user_id: user.id 
     }))
 
-    // onConflict: player_id gunanya kalo ID udah ada, jangan dianggep error, tapi di-ignore/update aja
+    // REVISI DISINI: Kita tegaskan onConflict-nya
     const { error } = await supabase
       .from('monitored_players')
-      .upsert(dataToInsert, { onConflict: 'player_id' }) 
+      .upsert(dataToInsert, { 
+        onConflict: 'player_id,user_id', // Gunakan kombinasi unik
+        ignoreDuplicates: false 
+      })
 
-    if (error) alert('Gagal: ' + error.message)
-    else { alert(`Mantap! ${ids.length} ID berhasil diproses.`); setListPlayerIds(''); }
+    if (error) {
+      console.error(error)
+      alert('Gagal: ' + error.message)
+    } else { 
+      alert(`Mantap! ${ids.length} ID berhasil diproses.`); 
+      setListPlayerIds(''); 
+    }
   }
 
-  // 3. FUNGSI HAPUS (Cuma hapus punya diri sendiri)
   const clearHistory = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (confirm('Yakin mau hapus SEMUA history coin lu?')) {
