@@ -24,11 +24,11 @@ export default function Home() {
 
   const fetchData = async () => {
     setLoading(true)
-    console.log("--- SYNCING FROM MATERIALIZED VIEW ---")
+    console.log("--- SYNCING FROM PRIVATE VIEW ---")
     try {
       const { data: { user } } = await supabase.auth.getUser()
       
-      // 1. Ambil Watchlist ID (List ID yang mau dipantau)
+      // 1. Ambil Watchlist ID milik user yang sedang login
       const { data: watchList, error: wlError } = await supabase
         .from('monitored_players')
         .select('player_id')
@@ -42,25 +42,25 @@ export default function Home() {
         return
       }
 
-      // Bersihin list ID biar sinkron sama database
       const monitoredIds = watchList.map(item => item.player_id.toUpperCase().trim())
 
-      // 2. Tembak langsung ke Materialized View (Cuma ambil ID yang ada di Watchlist)
+      // 2. Tarik dari Materialized View dengan FILTER user_id (Biar ga nyampur)
       const { data: viewData, error: viewError } = await supabase
         .from('player_rekap_view')
         .select('*')
+        .eq('user_id', user?.id) // <-- Filter ini pengunci privasi data lu
         .in('player_id', monitoredIds)
 
       if (viewError) throw viewError
 
-      // 3. Gabungin data biar rapi di tabel
+      // 3. Format data untuk UI
       const formattedData = (viewData || []).map(item => ({
         name: item.player_id,
         total: item.total_profit || 0,
         count: item.transaction_count || 0
       })).sort((a, b) => a.name.localeCompare(b.name))
 
-      console.log("DEBUG: Data Berhasil Dimuat!", formattedData.length, "Players")
+      console.log("DEBUG: Data Privasi Berhasil Dimuat!", formattedData.length, "Players")
       setRekap(formattedData)
       setCurrentPage(1)
       
@@ -84,7 +84,7 @@ export default function Home() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px', borderBottom: '1px solid #1e293b', paddingBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: '900', color: '#38bdf8', textShadow: '0 0 20px rgba(56, 189, 248, 0.4)', margin: 0 }}>CLouds Monitor <span style={{ color: '#f8fafc', fontWeight: '200' }}>V1</span></h1>
-          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>FAST VIEW MODE</span></p>
+          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>PRIVATE VIEW MODE</span></p>
         </div>
         <div style={{ display: 'flex', gap: '15px' }}>
           <button onClick={() => window.location.href = '/admin'} style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '1px solid #38bdf8', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: 'bold' }}>ADMIN</button>
@@ -94,7 +94,7 @@ export default function Home() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '100px' }}>
-          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>LOADING DATA FROM SERVER...</p>
+          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>LOADING YOUR SECURE DATA...</p>
         </div>
       ) : (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -123,7 +123,7 @@ export default function Home() {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan="3" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Tidak ada ID di watchlist yang memiliki transaksi.</td>
+                    <td colSpan="3" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Tidak ada data transaksi milik Anda.</td>
                   </tr>
                 )}
               </tbody>
