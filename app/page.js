@@ -8,7 +8,7 @@ export default function Home() {
   const [rekap, setRekap] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 12
+  const itemsPerPage = 12 // Lu bisa ganti jadi 20 atau 50 kalau mau lebih panjang
 
   useEffect(() => {
     const checkUser = async () => {
@@ -24,18 +24,15 @@ export default function Home() {
 
   const fetchData = async () => {
     setLoading(true)
-    console.log("--- SYNCING FROM PRIVATE VIEW ---")
     try {
       const { data: { user } } = await supabase.auth.getUser()
       
-      // 1. Ambil Watchlist ID milik user yang sedang login
-      const { data: watchList, error: wlError } = await supabase
+      // 1. Ambil Watchlist ID
+      const { data: watchList } = await supabase
         .from('monitored_players')
         .select('player_id')
         .eq('user_id', user?.id)
 
-      if (wlError) throw wlError
-      
       if (!watchList || watchList.length === 0) {
         setRekap([])
         setLoading(false)
@@ -44,34 +41,32 @@ export default function Home() {
 
       const monitoredIds = watchList.map(item => item.player_id.toUpperCase().trim())
 
-      // 2. Tarik dari Materialized View dengan FILTER user_id (Biar ga nyampur)
+      // 2. Tarik data dari Materialized View
       const { data: viewData, error: viewError } = await supabase
         .from('player_rekap_view')
         .select('*')
-        .eq('user_id', user?.id) // <-- Filter ini pengunci privasi data lu
+        .eq('user_id', user?.id)
         .in('player_id', monitoredIds)
 
       if (viewError) throw viewError
 
-      // 3. Format data untuk UI
+      // 3. Gabungkan dan urutkan
       const formattedData = (viewData || []).map(item => ({
         name: item.player_id,
         total: item.total_profit || 0,
         count: item.transaction_count || 0
       })).sort((a, b) => a.name.localeCompare(b.name))
 
-      console.log("DEBUG: Data Privasi Berhasil Dimuat!", formattedData.length, "Players")
       setRekap(formattedData)
-      setCurrentPage(1)
-      
+      setCurrentPage(1) // Reset ke hal 1 tiap refresh
     } catch (err) {
-      console.error("DASHBOARD ERROR:", err)
-      alert("Gagal memuat data: " + err.message)
+      console.error("Gagal tarik data:", err)
     } finally {
       setLoading(false)
     }
   }
 
+  // Logic Pagination
   const totalGlobal = rekap.reduce((sum, item) => sum + item.total, 0)
   const totalPages = Math.ceil(rekap.length / itemsPerPage)
   const indexOfLastItem = currentPage * itemsPerPage
@@ -81,10 +76,13 @@ export default function Home() {
   return (
     <div style={{ padding: '40px', backgroundColor: '#020617', backgroundImage: 'radial-gradient(circle at 50% 50%, #1e293b 0%, #020617 100%)', color: '#f8fafc', minHeight: '100vh', fontFamily: 'sans-serif' }}>
       
+      {/* HEADER & AUTO COUNT */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px', borderBottom: '1px solid #1e293b', paddingBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: '900', color: '#38bdf8', textShadow: '0 0 20px rgba(56, 189, 248, 0.4)', margin: 0 }}>CLouds Monitor <span style={{ color: '#f8fafc', fontWeight: '200' }}>V1</span></h1>
-          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>PRIVATE VIEW MODE</span></p>
+          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>
+            Tracking: <span style={{ color: '#00ff88', fontWeight: 'bold' }}>{rekap.length} Protocols Loaded</span>
+          </p>
         </div>
         <div style={{ display: 'flex', gap: '15px' }}>
           <button onClick={() => window.location.href = '/admin'} style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '1px solid #38bdf8', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: 'bold' }}>ADMIN</button>
@@ -94,15 +92,17 @@ export default function Home() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '100px' }}>
-          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>LOADING YOUR SECURE DATA...</p>
+          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>SYNCING DATABASE...</p>
         </div>
       ) : (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          {/* TOTAL BALANCE CARD */}
           <div style={{ background: 'rgba(30, 41, 59, 0.5)', padding: '30px', borderRadius: '16px', marginBottom: '30px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backdropFilter: 'blur(10px)' }}>
             <span style={{ color: '#94a3b8', fontWeight: '600' }}>TOTAL OPERATING BALANCE</span>
             <span style={{ fontSize: '32px', fontWeight: '900', color: totalGlobal >= 0 ? '#00ff88' : '#ff4444' }}>{totalGlobal >= 0 ? '▲' : '▼'} {totalGlobal.toLocaleString()}</span>
           </div>
 
+          {/* TABLE */}
           <div style={{ background: 'rgba(15, 23, 42, 0.8)', borderRadius: '16px', border: '1px solid #1e293b', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -114,7 +114,7 @@ export default function Home() {
               </thead>
               <tbody>
                 {currentItems.length > 0 ? currentItems.map((player, index) => (
-                  <tr key={index} className="table-row" style={{ borderBottom: '1px solid #1e293b' }}>
+                  <tr key={index} style={{ borderBottom: '1px solid #1e293b' }}>
                     <td style={{ padding: '18px 20px', fontWeight: '700' }}>{player.name}</td>
                     <td style={{ padding: '18px 20px', color: player.total >= 0 ? '#00ff88' : '#ff4444', fontWeight: '800' }}>{player.total >= 0 ? '+' : ''}{player.total.toLocaleString()}</td>
                     <td style={{ padding: '18px 20px', textAlign: 'center' }}>
@@ -123,21 +123,37 @@ export default function Home() {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan="3" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Tidak ada data transaksi milik Anda.</td>
+                    <td colSpan="3" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Belum ada data transaksi untuk watchlist lu.</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
 
+          {/* PAGINATION CONTROLS */}
           <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center' }}>
-            <button disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)} style={{ background: '#1e293b', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', opacity: currentPage === 1 ? 0.3 : 1 }}>PREV</button>
-            <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{currentPage} / {totalPages || 1}</span>
-            <button disabled={currentPage >= totalPages} onClick={() => setCurrentPage(prev => prev + 1)} style={{ background: '#1e293b', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', opacity: currentPage >= totalPages ? 0.3 : 1 }}>NEXT</button>
+            <button 
+              disabled={currentPage === 1} 
+              onClick={() => setCurrentPage(prev => prev - 1)} 
+              style={{ background: '#1e293b', color: 'white', border: '1px solid #334155', padding: '10px 25px', borderRadius: '8px', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.3 : 1 }}
+            >
+              PREV
+            </button>
+            
+            <div style={{ color: '#38bdf8', fontWeight: 'bold', background: 'rgba(56, 189, 248, 0.1)', padding: '10px 20px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
+              Page {currentPage} of {totalPages || 1}
+            </div>
+
+            <button 
+              disabled={currentPage >= totalPages} 
+              onClick={() => setCurrentPage(prev => prev + 1)} 
+              style={{ background: '#1e293b', color: 'white', border: '1px solid #334155', padding: '10px 25px', borderRadius: '8px', cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer', opacity: currentPage >= totalPages ? 0.3 : 1 }}
+            >
+              NEXT
+            </button>
           </div>
         </div>
       )}
-      <style jsx>{` .table-row:hover { background-color: rgba(56, 189, 248, 0.05) !important; } `}</style>
     </div>
   )
 }
