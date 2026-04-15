@@ -24,63 +24,49 @@ export default function Home() {
 
   const fetchData = async () => {
     setLoading(true)
-    console.log("--- FETCHING FROM DATABASE VIEW (OPTIMIZED) ---")
+    console.log("--- SYNCING FROM MATERIALIZED VIEW ---")
     try {
       const { data: { user } } = await supabase.auth.getUser()
       
-      // 1. Tarik list Watchlist (Looping fetch tetap ada buat antisipasi > 1000 ID)
-      let fullWatchList = []
-      let wlFrom = 0
-      let wlTo = 999
-      let wlHasMore = true
+      // 1. Ambil Watchlist ID (List ID yang mau dipantau)
+      const { data: watchList, error: wlError } = await supabase
+        .from('monitored_players')
+        .select('player_id')
+        .eq('user_id', user?.id)
 
-      while (wlHasMore) {
-        const { data: wlPage, error: wlError } = await supabase
-          .from('monitored_players')
-          .select('player_id')
-          .eq('user_id', user?.id)
-          .range(wlFrom, wlTo)
-
-        if (wlError) throw wlError
-        if (wlPage && wlPage.length > 0) {
-          fullWatchList = [...fullWatchList, ...wlPage]
-          wlFrom += 1000
-          wlTo += 1000
-        } else {
-          wlHasMore = false
-        }
-      }
-
-      if (fullWatchList.length === 0) {
+      if (wlError) throw wlError
+      
+      if (!watchList || watchList.length === 0) {
         setRekap([])
         setLoading(false)
         return
       }
 
-      const monitoredIds = fullWatchList.map(item => item.player_id.toUpperCase().trim())
+      // Bersihin list ID biar sinkron sama database
+      const monitoredIds = watchList.map(item => item.player_id.toUpperCase().trim())
 
-      // 2. AMBIL HASIL HITUNGAN DARI VIEW (Server-Side)
-      // Kita panggil 'player_rekap_view' yang sudah lu buat di SQL Editor
+      // 2. Tembak langsung ke Materialized View (Cuma ambil ID yang ada di Watchlist)
       const { data: viewData, error: viewError } = await supabase
         .from('player_rekap_view')
-        .select('player_id, total_profit, transaction_count')
+        .select('*')
         .in('player_id', monitoredIds)
 
       if (viewError) throw viewError
 
-      // 3. Mapping data ke format tabel
-      const formattedData = viewData.map(item => ({
+      // 3. Gabungin data biar rapi di tabel
+      const formattedData = (viewData || []).map(item => ({
         name: item.player_id,
-        total: item.total_profit,
-        count: item.transaction_count
+        total: item.total_profit || 0,
+        count: item.transaction_count || 0
       })).sort((a, b) => a.name.localeCompare(b.name))
 
+      console.log("DEBUG: Data Berhasil Dimuat!", formattedData.length, "Players")
       setRekap(formattedData)
       setCurrentPage(1)
       
     } catch (err) {
-      console.error("DEBUG ERROR:", err)
-      alert("Error Syncing: " + err.message)
+      console.error("DASHBOARD ERROR:", err)
+      alert("Gagal memuat data: " + err.message)
     } finally {
       setLoading(false)
     }
@@ -98,7 +84,7 @@ export default function Home() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px', borderBottom: '1px solid #1e293b', paddingBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: '900', color: '#38bdf8', textShadow: '0 0 20px rgba(56, 189, 248, 0.4)', margin: 0 }}>CLouds Monitor <span style={{ color: '#f8fafc', fontWeight: '200' }}>V1</span></h1>
-          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>SERVER-SIDE VIEW</span></p>
+          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>FAST VIEW MODE</span></p>
         </div>
         <div style={{ display: 'flex', gap: '15px' }}>
           <button onClick={() => window.location.href = '/admin'} style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '1px solid #38bdf8', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: 'bold' }}>ADMIN</button>
@@ -108,7 +94,7 @@ export default function Home() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '100px' }}>
-          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>LOADING REKAP DATA...</p>
+          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>LOADING DATA FROM SERVER...</p>
         </div>
       ) : (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -137,7 +123,7 @@ export default function Home() {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan="3" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Tidak ada data transaksi.</td>
+                    <td colSpan="3" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Tidak ada ID di watchlist yang memiliki transaksi.</td>
                   </tr>
                 )}
               </tbody>
