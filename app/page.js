@@ -24,11 +24,11 @@ export default function Home() {
 
   const fetchData = async () => {
     setLoading(true)
-    console.log("--- START DATABASE SYNC (RIKU POWER MODE) ---")
+    console.log("--- FETCHING FROM DATABASE VIEW (OPTIMIZED) ---")
     try {
       const { data: { user } } = await supabase.auth.getUser()
       
-      // 1. LOOP FETCH WATCHLIST (Biar tembus 1000++ ID sampai 10.000)
+      // 1. Tarik list Watchlist (Looping fetch tetap ada buat antisipasi > 1000 ID)
       let fullWatchList = []
       let wlFrom = 0
       let wlTo = 999
@@ -49,10 +49,7 @@ export default function Home() {
         } else {
           wlHasMore = false
         }
-        if (wlFrom > 20000) break // Safety limit 20rb ID
       }
-
-      console.log(`DEBUG: Total ID di Watchlist lu: ${fullWatchList.length}`);
 
       if (fullWatchList.length === 0) {
         setRekap([])
@@ -60,65 +57,25 @@ export default function Home() {
         return
       }
 
-      const summaryMap = new Map()
-      fullWatchList.forEach(item => {
-        const cleanName = item.player_id.toUpperCase().trim()
-        summaryMap.set(cleanName, { name: cleanName, total: 0, count: 0 })
-      })
+      const monitoredIds = fullWatchList.map(item => item.player_id.toUpperCase().trim())
 
-      // 2. LOOP FETCH HISTORY (Tarik sampai 100.000 data bertahap)
-      let allHistory = []
-      let hFrom = 0
-      let hTo = 999
-      let hHasMore = true
+      // 2. AMBIL HASIL HITUNGAN DARI VIEW (Server-Side)
+      // Kita panggil 'player_rekap_view' yang sudah lu buat di SQL Editor
+      const { data: viewData, error: viewError } = await supabase
+        .from('player_rekap_view')
+        .select('player_id, total_profit, transaction_count')
+        .in('player_id', monitoredIds)
 
-      while (hHasMore) {
-        const { data, error } = await supabase
-          .from('coin_history')
-          .select('TO, Coin, Info')
-          .range(hFrom, hTo)
+      if (viewError) throw viewError
 
-        if (error) throw error
-        if (data && data.length > 0) {
-          allHistory = [...allHistory, ...data]
-          hFrom += 1000
-          hTo += 1000
-        } else {
-          hHasMore = false
-        }
-        if (hFrom > 100000) break 
-      }
+      // 3. Mapping data ke format tabel
+      const formattedData = viewData.map(item => ({
+        name: item.player_id,
+        total: item.total_profit,
+        count: item.transaction_count
+      })).sort((a, b) => a.name.localeCompare(b.name))
 
-      console.log(`DEBUG: Total data history ditarik: ${allHistory.length}`);
-
-      // 3. PROSES HITUNG (Logic Riku)
-      for (let i = 0; i < allHistory.length; i++) {
-        const item = allHistory[i]
-        const rawName = item.TO ? item.TO.toString().toUpperCase().trim() : ''
-        
-        if (summaryMap.has(rawName)) {
-          const amount = parseFloat(item.Coin) || 0
-          const info = item.Info ? item.Info.toString().toUpperCase().trim() : ''
-          
-          if (info.includes('REJECT') || info.includes('CANCEL')) continue
-
-          const stats = summaryMap.get(rawName)
-          if (info.includes('WITHDRAW')) {
-            stats.total -= amount
-            stats.count += 1
-          } else if (info.includes('DEPOSIT')) {
-            stats.total += amount
-            stats.count += 1
-          }
-        }
-      }
-
-      const activePlayers = Array.from(summaryMap.values())
-        .filter(player => player.count > 0)
-        .sort((a, b) => a.name.localeCompare(b.name))
-
-      console.log(`DEBUG: ID yang aktif muncul: ${activePlayers.length}`);
-      setRekap(activePlayers)
+      setRekap(formattedData)
       setCurrentPage(1)
       
     } catch (err) {
@@ -141,7 +98,7 @@ export default function Home() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px', borderBottom: '1px solid #1e293b', paddingBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: '900', color: '#38bdf8', textShadow: '0 0 20px rgba(56, 189, 248, 0.4)', margin: 0 }}>CLouds Monitor <span style={{ color: '#f8fafc', fontWeight: '200' }}>V1</span></h1>
-          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>ACTIVE (POWER MODE)</span></p>
+          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>SERVER-SIDE VIEW</span></p>
         </div>
         <div style={{ display: 'flex', gap: '15px' }}>
           <button onClick={() => window.location.href = '/admin'} style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '1px solid #38bdf8', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: 'bold' }}>ADMIN</button>
@@ -151,7 +108,7 @@ export default function Home() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '100px' }}>
-          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>SYNCING 10,000+ IDs & RECORDS...</p>
+          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>LOADING REKAP DATA...</p>
         </div>
       ) : (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -170,7 +127,7 @@ export default function Home() {
                 </tr>
               </thead>
               <tbody>
-                {currentItems.map((player, index) => (
+                {currentItems.length > 0 ? currentItems.map((player, index) => (
                   <tr key={index} className="table-row" style={{ borderBottom: '1px solid #1e293b' }}>
                     <td style={{ padding: '18px 20px', fontWeight: '700' }}>{player.name}</td>
                     <td style={{ padding: '18px 20px', color: player.total >= 0 ? '#00ff88' : '#ff4444', fontWeight: '800' }}>{player.total >= 0 ? '+' : ''}{player.total.toLocaleString()}</td>
@@ -178,7 +135,11 @@ export default function Home() {
                       <span style={{ background: '#1e293b', padding: '4px 10px', borderRadius: '4px', fontSize: '11px' }}>{player.count}x</span>
                     </td>
                   </tr>
-                ))}
+                )) : (
+                  <tr>
+                    <td colSpan="3" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Tidak ada data transaksi.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
