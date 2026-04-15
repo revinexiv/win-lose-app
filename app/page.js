@@ -24,101 +24,100 @@ export default function Home() {
 
   const fetchData = async () => {
     setLoading(true)
-    console.log("--- START DEBUGGING RIKU ---")
+    console.log("--- START DATABASE SYNC (RIKU POWER MODE) ---")
     try {
       const { data: { user } } = await supabase.auth.getUser()
       
-      const { data: watchList } = await supabase
-        .from('monitored_players')
-        .select('player_id')
-        .eq('user_id', user?.id)
-        
-      if (!watchList || watchList.length === 0) {
-        console.warn("DEBUG: Watchlist kosong di database lu!");
+      // 1. LOOP FETCH WATCHLIST (Biar tembus 1000++ ID sampai 10.000)
+      let fullWatchList = []
+      let wlFrom = 0
+      let wlTo = 999
+      let wlHasMore = true
+
+      while (wlHasMore) {
+        const { data: wlPage, error: wlError } = await supabase
+          .from('monitored_players')
+          .select('player_id')
+          .eq('user_id', user?.id)
+          .range(wlFrom, wlTo)
+
+        if (wlError) throw wlError
+        if (wlPage && wlPage.length > 0) {
+          fullWatchList = [...fullWatchList, ...wlPage]
+          wlFrom += 1000
+          wlTo += 1000
+        } else {
+          wlHasMore = false
+        }
+        if (wlFrom > 20000) break // Safety limit 20rb ID
+      }
+
+      console.log(`DEBUG: Total ID di Watchlist lu: ${fullWatchList.length}`);
+
+      if (fullWatchList.length === 0) {
         setRekap([])
         setLoading(false)
         return
       }
 
-      console.log(`DEBUG: Total ID di Watchlist lu ada: ${watchList.length}`);
-
       const summaryMap = new Map()
-      watchList.forEach(item => {
+      fullWatchList.forEach(item => {
         const cleanName = item.player_id.toUpperCase().trim()
         summaryMap.set(cleanName, { name: cleanName, total: 0, count: 0 })
       })
 
+      // 2. LOOP FETCH HISTORY (Tarik sampai 100.000 data bertahap)
       let allHistory = []
-      let from = 0
-      let to = 999
-      let hasMore = true
+      let hFrom = 0
+      let hTo = 999
+      let hHasMore = true
 
-      while (hasMore) {
+      while (hHasMore) {
         const { data, error } = await supabase
           .from('coin_history')
           .select('TO, Coin, Info')
-          .range(from, to)
+          .range(hFrom, hTo)
 
         if (error) throw error
-        if (data.length > 0) {
+        if (data && data.length > 0) {
           allHistory = [...allHistory, ...data]
-          from += 1000
-          to += 1000
+          hFrom += 1000
+          hTo += 1000
         } else {
-          hasMore = false
+          hHasMore = false
         }
-        if (from > 100000) break 
+        if (hFrom > 100000) break 
       }
 
-      console.log(`DEBUG: Berhasil tarik total ${allHistory.length} data history.`);
+      console.log(`DEBUG: Total data history ditarik: ${allHistory.length}`);
 
-      let mismatchCount = 0;
-      let statusMismatch = new Set();
-
+      // 3. PROSES HITUNG (Logic Riku)
       for (let i = 0; i < allHistory.length; i++) {
         const item = allHistory[i]
         const rawName = item.TO ? item.TO.toString().toUpperCase().trim() : ''
         
-        // 1. CEK APAKAH ID COCOK DENGAN WATCHLIST
-        if (!summaryMap.has(rawName)) {
-          mismatchCount++;
-          // Lu bisa liat ID apa aja yang ga kedaftar di watchlist tapi ada di history
-          // console.log(`MISMATCH: ID ${rawName} ada di history tapi ga ada di Watchlist.`);
-          continue
+        if (summaryMap.has(rawName)) {
+          const amount = parseFloat(item.Coin) || 0
+          const info = item.Info ? item.Info.toString().toUpperCase().trim() : ''
+          
+          if (info.includes('REJECT') || info.includes('CANCEL')) continue
+
+          const stats = summaryMap.get(rawName)
+          if (info.includes('WITHDRAW')) {
+            stats.total -= amount
+            stats.count += 1
+          } else if (info.includes('DEPOSIT')) {
+            stats.total += amount
+            stats.count += 1
+          }
         }
-
-        const amount = parseFloat(item.Coin) || 0
-        const info = item.Info ? item.Info.toString().toUpperCase().trim() : ''
-        
-        if (info.includes('REJECT') || info.includes('CANCEL')) continue
-
-        const stats = summaryMap.get(rawName)
-        
-        // 2. CEK APAKAH STATUSNYA BENERAN DEPO/WD
-        if (info.includes('WITHDRAW')) {
-          stats.total -= amount
-          stats.count += 1
-        } else if (info.includes('DEPOSIT')) {
-          stats.total += amount
-          stats.count += 1
-        } else {
-          // Kalau ada status sukses selain Depo/WD, dia bakal kedaftar di sini
-          statusMismatch.add(info);
-        }
-      }
-
-      console.log(`DEBUG: Ada ${mismatchCount} baris data yang ID-nya ga cocok sama Watchlist.`);
-      if (statusMismatch.size > 0) {
-        console.log("DEBUG: Status transaksi lain yang terdeteksi:", Array.from(statusMismatch));
       }
 
       const activePlayers = Array.from(summaryMap.values())
         .filter(player => player.count > 0)
         .sort((a, b) => a.name.localeCompare(b.name))
 
-      console.log(`DEBUG: Total ID yang akhirnya muncul (Active): ${activePlayers.length}`);
-      console.log("--- END DEBUGGING ---")
-
+      console.log(`DEBUG: ID yang aktif muncul: ${activePlayers.length}`);
       setRekap(activePlayers)
       setCurrentPage(1)
       
@@ -142,7 +141,7 @@ export default function Home() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px', borderBottom: '1px solid #1e293b', paddingBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: '900', color: '#38bdf8', textShadow: '0 0 20px rgba(56, 189, 248, 0.4)', margin: 0 }}>CLouds Monitor <span style={{ color: '#f8fafc', fontWeight: '200' }}>V1</span></h1>
-          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>ACTIVE (DEBUG MODE)</span></p>
+          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>ACTIVE (POWER MODE)</span></p>
         </div>
         <div style={{ display: 'flex', gap: '15px' }}>
           <button onClick={() => window.location.href = '/admin'} style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '1px solid #38bdf8', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: 'bold' }}>ADMIN</button>
@@ -152,7 +151,7 @@ export default function Home() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '100px' }}>
-          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>RUNNING CORE DIAGNOSTICS...</p>
+          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>SYNCING 10,000+ IDs & RECORDS...</p>
         </div>
       ) : (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
