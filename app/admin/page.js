@@ -9,7 +9,6 @@ export default function AdminPanel() {
   const [listPlayerIds, setListPlayerIds] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // 1. Fungsi Upload History (Anti-Duplicate)
   const handleUpload = async () => {
     if (!csvText) return alert('Isi dulu datanya, Bos!')
     const { data: { user } } = await supabase.auth.getUser()
@@ -38,19 +37,13 @@ export default function AdminPanel() {
     setLoading(false)
   }
 
-  // 2. Fungsi Tambah ID (Perfect Filtering - Anti Error 'Second Time')
   const addMultiplePlayers = async () => {
     if (!listPlayerIds) return alert('Isi dulu list ID-nya!')
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return alert('Login dulu!')
 
     setLoading(true)
-    
-    // --- LOGIC ANTI ERROR DISINI ---
-    // Pecah input, bersihin spasi, buang baris kosong
     const rawIds = listPlayerIds.split(/[\n,]+/).map(id => id.trim()).filter(id => id !== '')
-    
-    // Filter ID yang kembar di dalam satu list input pake 'Set'
     const uniqueIds = [...new Set(rawIds)]
     
     const dataToInsert = uniqueIds.map(id => ({ 
@@ -74,7 +67,6 @@ export default function AdminPanel() {
     setLoading(false)
   }
 
-  // 3. Fungsi Hapus (Hanya milik user login)
   const clearHistory = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (confirm('Yakin mau hapus SEMUA history coin lu?')) {
@@ -94,39 +86,134 @@ export default function AdminPanel() {
   }
 
   return (
-    <div style={{ padding: '40px', backgroundColor: '#121212', color: 'white', minHeight: '100vh', fontFamily: 'sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ color: '#00ff88' }}>🛠 Riku Admin Control</h1>
-        <button onClick={() => window.location.href = '/'} style={{ background: '#333', color: 'white', border: 'none', padding: '10px', borderRadius: '5px', cursor: 'pointer' }}>KEMBALI KE HOME</button>
-      </div>
-      <hr style={{ borderColor: '#333', marginBottom: '30px' }} />
+    <div style={{ 
+      padding: '40px', 
+      backgroundColor: '#020617', 
+      backgroundImage: 'radial-gradient(circle at 50% 50%, #1e293b 0%, #020617 100%)',
+      color: '#f8fafc', 
+      minHeight: '100vh', 
+      fontFamily: 'Inter, system-ui, sans-serif' 
+    }}>
       
-      {/* 1. SEKSI UPLOAD */}
-      <div style={{ background: '#1e1e1e', padding: '20px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #333' }}>
-        <h3 style={{ marginTop: 0 }}>1. Paste Data History Coin (CSV)</h3>
-        <textarea style={{ width: '100%', background: '#000', color: '#0f0', padding: '10px', border: '1px solid #444', borderRadius: '5px' }} rows="5" value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder='Paste CSV di sini...' />
-        <button disabled={loading} onClick={handleUpload} style={{ marginTop: '10px', padding: '12px 25px', backgroundColor: '#00ff88', border: 'none', cursor: 'pointer', fontWeight: 'bold', borderRadius: '5px', color: '#000' }}>
-          {loading ? 'UPLOADING...' : 'UPLOAD HISTORY'}
-        </button>
+      {/* HEADER */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginBottom: '40px',
+        borderBottom: '1px solid #1e293b',
+        paddingBottom: '20px'
+      }}>
+        <h1 style={{ 
+          fontSize: '28px', 
+          fontWeight: '900', 
+          color: '#38bdf8', 
+          textShadow: '0 0 15px rgba(56, 189, 248, 0.4)',
+          margin: 0 
+        }}>🛠 ADMIN <span style={{ color: '#f8fafc', fontWeight: '200' }}>CONTROL</span></h1>
+        <button onClick={() => window.location.href = '/'} style={{ 
+          background: 'rgba(255, 255, 255, 0.05)', 
+          color: 'white', 
+          border: '1px solid #334155', 
+          padding: '10px 20px', 
+          borderRadius: '8px', 
+          cursor: 'pointer',
+          fontWeight: '600',
+          transition: '0.3s'
+        }}>BACK TO DASHBOARD</button>
       </div>
 
-      {/* 2. SEKSI WATCHLIST */}
-      <div style={{ background: '#1e1e1e', padding: '20px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #333' }}>
-        <h3 style={{ marginTop: 0 }}>2. Tambah List ID Pantauan (Massal)</h3>
-        <p style={{ color: '#888', fontSize: '13px' }}>Bisa dipisahkan koma atau baris baru.</p>
-        <textarea style={{ width: '100%', background: '#000', color: '#fff', padding: '10px', border: '1px solid #444', borderRadius: '5px' }} rows="3" value={listPlayerIds} onChange={(e) => setListPlayerIds(e.target.value)} placeholder="player1, player2, player3..." />
-        <button disabled={loading} onClick={addMultiplePlayers} style={{ marginTop: '10px', padding: '12px 25px', backgroundColor: '#0088ff', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold', borderRadius: '5px' }}>
-          {loading ? 'PROSESING...' : 'PANTAU SEMUA ID'}
-        </button>
-      </div>
-
-      {/* 3. DANGER ZONE */}
-      <div style={{ background: '#2d1a1a', padding: '20px', borderRadius: '10px', border: '1px solid #ff4444' }}>
-        <h3 style={{ color: '#ff4444', marginTop: 0 }}>⚠️ Danger Zone</h3>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={clearHistory} style={{ padding: '10px 15px', backgroundColor: '#ff4444', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '5px' }}>HAPUS SEMUA HISTORY COIN</button>
-          <button onClick={clearWatchlist} style={{ padding: '10px 15px', backgroundColor: '#ff9900', color: 'black', border: 'none', cursor: 'pointer', borderRadius: '5px', fontWeight: 'bold' }}>KOSONGKAN DAFTAR PANTAU</button>
+      <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+        
+        {/* 1. UPLOAD SECTION */}
+        <div style={{ 
+          background: 'rgba(30, 41, 59, 0.4)', 
+          padding: '30px', 
+          borderRadius: '16px', 
+          marginBottom: '25px', 
+          border: '1px solid #334155',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <h3 style={{ marginTop: 0, color: '#00ff88', letterSpacing: '1px' }}>01. DATA INJECTION (CSV)</h3>
+          <textarea 
+            style={{ 
+              width: '100%', background: '#000', color: '#00ff88', padding: '15px', 
+              border: '1px solid #1e293b', borderRadius: '8px', fontFamily: 'monospace',
+              boxSizing: 'border-box'
+            }} 
+            rows="6" 
+            value={csvText} 
+            onChange={(e) => setCsvText(e.target.value)} 
+            placeholder='Paste CSV raw data here...' 
+          />
+          <button 
+            disabled={loading} 
+            onClick={handleUpload} 
+            style={{ 
+              marginTop: '15px', padding: '12px 30px', backgroundColor: '#00ff88', 
+              border: 'none', cursor: 'pointer', fontWeight: '900', borderRadius: '8px', 
+              color: '#020617', boxShadow: '0 0 15px rgba(0, 255, 136, 0.3)' 
+            }}
+          >
+            {loading ? 'EXECUTING...' : 'UPLOAD TO CORE'}
+          </button>
         </div>
+
+        {/* 2. WATCHLIST SECTION */}
+        <div style={{ 
+          background: 'rgba(30, 41, 59, 0.4)', 
+          padding: '30px', 
+          borderRadius: '16px', 
+          marginBottom: '25px', 
+          border: '1px solid #334155',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <h3 style={{ marginTop: 0, color: '#38bdf8', letterSpacing: '1px' }}>02. PROTOCOL REGISTRATION</h3>
+          <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '10px' }}>Enter IDs separated by comma or new line.</p>
+          <textarea 
+            style={{ 
+              width: '100%', background: '#000', color: '#fff', padding: '15px', 
+              border: '1px solid #1e293b', borderRadius: '8px', fontFamily: 'monospace',
+              boxSizing: 'border-box'
+            }} 
+            rows="4" 
+            value={listPlayerIds} 
+            onChange={(e) => setListPlayerIds(e.target.value)} 
+            placeholder="Ex: player123, player456..." 
+          />
+          <button 
+            disabled={loading} 
+            onClick={addMultiplePlayers} 
+            style={{ 
+              marginTop: '15px', padding: '12px 30px', backgroundColor: '#38bdf8', 
+              color: '#020617', border: 'none', cursor: 'pointer', fontWeight: '900', 
+              borderRadius: '8px', boxShadow: '0 0 15px rgba(56, 189, 248, 0.3)'
+            }}
+          >
+            {loading ? 'SYNCING...' : 'REGISTER PROTOCOLS'}
+          </button>
+        </div>
+
+        {/* 3. DANGER ZONE */}
+        <div style={{ 
+          background: 'rgba(28, 25, 23, 0.6)', 
+          padding: '30px', 
+          borderRadius: '16px', 
+          border: '1px solid #451a1a'
+        }}>
+          <h3 style={{ color: '#ef4444', marginTop: 0, letterSpacing: '1px' }}>⚠️ TERMINATION ZONE</h3>
+          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginTop: '15px' }}>
+            <button onClick={clearHistory} style={{ 
+              padding: '12px 20px', backgroundColor: '#ef4444', color: 'white', 
+              border: 'none', cursor: 'pointer', borderRadius: '8px', fontWeight: 'bold' 
+            }}>WIPE ALL HISTORY</button>
+            <button onClick={clearWatchlist} style={{ 
+              padding: '12px 20px', backgroundColor: '#f97316', color: 'black', 
+              border: 'none', cursor: 'pointer', borderRadius: '8px', fontWeight: '900' 
+            }}>PURGE WATCHLIST</button>
+          </div>
+        </div>
+
       </div>
     </div>
   )

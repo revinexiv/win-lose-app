@@ -26,6 +26,7 @@ export default function Home() {
     setLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
+      
       const { data: watchList } = await supabase
         .from('monitored_players')
         .select('player_id')
@@ -37,6 +38,7 @@ export default function Home() {
         return
       }
 
+      // Base list Map
       const summaryMap = new Map()
       watchList.forEach(item => {
         const cleanName = item.player_id.toUpperCase().trim()
@@ -72,8 +74,13 @@ export default function Home() {
         }
       }
 
-      const sortedResult = Array.from(summaryMap.values()).sort((a, b) => a.name.localeCompare(b.name))
-      setRekap(sortedResult)
+      // --- FILTER LOGIC RIKU ---
+      // Ambil semua dari Map, tapi filter yang count > 0 (Artinya ada transaksi sukses)
+      const activePlayers = Array.from(summaryMap.values())
+        .filter(player => player.count > 0)
+        .sort((a, b) => a.name.localeCompare(b.name))
+
+      setRekap(activePlayers)
       
     } catch (err) {
       console.error(err)
@@ -91,7 +98,7 @@ export default function Home() {
   return (
     <div style={{ 
       padding: '40px', 
-      backgroundColor: '#020617', // Darker background
+      backgroundColor: '#020617', 
       backgroundImage: 'radial-gradient(circle at 50% 50%, #1e293b 0%, #020617 100%)',
       color: '#f8fafc', 
       minHeight: '100vh', 
@@ -116,7 +123,7 @@ export default function Home() {
             textShadow: '0 0 20px rgba(56, 189, 248, 0.4)',
             margin: 0
           }}>
-            SYSTEM MONITOR <span style={{ color: '#f8fafc', fontWeight: '200' }}>v2.0</span>
+            CLouds Monitor <span style={{ color: '#f8fafc', fontWeight: '200' }}>V1</span>
           </h1>
           <p style={{ color: '#94a3b8', margin: '5px 0 0 0', fontSize: '14px' }}>Logika Kalkulasi: <span style={{ color: '#00ff88' }}>DEPOSIT</span> - <span style={{ color: '#ff4444' }}>WITHDRAW</span></p>
         </div>
@@ -135,12 +142,11 @@ export default function Home() {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '100px' }}>
           <div className="spinner" style={{ border: '4px solid #1e293b', borderTop: '4px solid #38bdf8', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }}></div>
-          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>SYNCING DATA...</p>
+          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>SYNCING CORE...</p>
         </div>
       ) : (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           
-          {/* TOTAL GLOBAL CARD */}
           <div style={{ 
             background: 'rgba(30, 41, 59, 0.5)', 
             padding: '30px', 
@@ -163,7 +169,6 @@ export default function Home() {
             </span>
           </div>
 
-          {/* TABLE SECTION */}
           <div style={{ 
             background: 'rgba(15, 23, 42, 0.8)', 
             borderRadius: '16px', 
@@ -180,7 +185,7 @@ export default function Home() {
                 </tr>
               </thead>
               <tbody>
-                {currentItems.map((player, index) => (
+                {currentItems.length > 0 ? currentItems.map((player, index) => (
                   <tr key={index} className="table-row" style={{ borderBottom: '1px solid #1e293b', transition: '0.2s' }}>
                     <td style={{ padding: '18px 20px', fontWeight: '700', color: '#f8fafc', fontSize: '15px' }}>{player.name}</td>
                     <td style={{ 
@@ -195,29 +200,31 @@ export default function Home() {
                       <span style={{ background: '#1e293b', padding: '4px 10px', borderRadius: '4px', fontSize: '12px' }}>{player.count} OPS</span>
                     </td>
                   </tr>
-                ))}
+                )) : (
+                  <tr>
+                    <td colSpan="3" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Tidak ada aktivitas transaksi terdeteksi.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
 
-          {/* PAGINATION */}
           <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center' }}>
             <button 
               disabled={currentPage === 1} 
               onClick={() => setCurrentPage(prev => prev - 1)}
-              style={{ background: '#1e293b', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}
+              style={{ background: '#1e293b', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', opacity: currentPage === 1 ? 0.5 : 1 }}
             >PREV</button>
             <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{currentPage} / {totalPages || 1}</span>
             <button 
               disabled={currentPage === totalPages || totalPages === 0} 
               onClick={() => setCurrentPage(prev => prev + 1)}
-              style={{ background: '#1e293b', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}
+              style={{ background: '#1e293b', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', opacity: (currentPage === totalPages || totalPages === 0) ? 0.5 : 1 }}
             >NEXT</button>
           </div>
         </div>
       )}
 
-      {/* Tambahan CSS buat animasi spinner */}
       <style jsx>{`
         @keyframes spin {
           0% { transform: rotate(0deg); }
