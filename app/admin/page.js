@@ -9,7 +9,7 @@ export default function AdminPanel() {
   const [listPlayerIds, setListPlayerIds] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // 1. UPLOAD CSV & REFRESH VIEW
+  // 1. UPLOAD CSV HISTORY
   const handleUpload = async () => {
     if (!csvText) return alert('Isi dulu datanya, Bos!')
     const { data: { user } } = await supabase.auth.getUser()
@@ -34,8 +34,7 @@ export default function AdminPanel() {
       const { error } = await supabase.from('coin_history').upsert(dataToInsert)
       if (error) throw error
 
-      await supabase.rpc('refresh_player_rekap')
-      alert('Upload Berhasil & Database Diperbarui!')
+      alert('Upload Berhasil! Dashboard otomatis update sekarang.')
       setCsvText('')
     } catch (err) {
       alert('Error: ' + err.message)
@@ -57,9 +56,7 @@ export default function AdminPanel() {
       const { error } = await supabase.from('monitored_players').upsert(dataToInsert)
       if (error) throw error
 
-      // Refresh view juga supaya ID baru muncul (biarpun saldo 0)
-      await supabase.rpc('refresh_player_rekap')
-      alert(`Mantap! ${uniqueIds.length} ID berhasil diproses.`)
+      alert(`Mantap! ${uniqueIds.length} ID berhasil didaftarkan ke Watchlist.`)
       setListPlayerIds('')
     } catch (err) {
       alert('Gagal: ' + err.message)
@@ -78,8 +75,7 @@ export default function AdminPanel() {
     try {
       const { error } = await supabase.from('coin_history').delete().eq('user_id', user.id)
       if (error) throw error
-      await supabase.rpc('refresh_player_rekap')
-      alert('Semua history coin berhasil dihapus!')
+      alert('Semua history coin lu udah bersih total!')
     } catch (err) {
       alert('Error: ' + err.message)
     } finally {
@@ -97,23 +93,9 @@ export default function AdminPanel() {
     try {
       const { error } = await supabase.from('monitored_players').delete().eq('user_id', user.id)
       if (error) throw error
-      await supabase.rpc('refresh_player_rekap')
-      alert('Semua daftar ID player berhasil dihapus!')
+      alert('Semua daftar ID player lu udah dihapus!')
     } catch (err) {
       alert('Error: ' + err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const manualRefresh = async () => {
-    setLoading(true)
-    try {
-      const { error } = await supabase.rpc('refresh_player_rekap')
-      if (error) throw error
-      alert('Database Berhasil Dihitung Ulang!')
-    } catch (err) {
-      alert('Gagal Refresh: ' + err.message)
     } finally {
       setLoading(false)
     }
@@ -124,10 +106,7 @@ export default function AdminPanel() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px', borderBottom: '1px solid #1e293b', paddingBottom: '20px' }}>
         <h1 style={{ fontSize: '28px', fontWeight: '900', color: '#38bdf8' }}>🛠 ADMIN CONTROL</h1>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={manualRefresh} disabled={loading} style={{ background: '#f59e0b', color: '#000', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-            {loading ? 'WAIT...' : 'REFRESH DATABASE'}
-          </button>
-          <button onClick={() => window.location.href = '/'} style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'white', border: '1px solid #334155', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}>BACK</button>
+          <button onClick={() => window.location.href = '/'} style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'white', border: '1px solid #334155', padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>BACK TO DASHBOARD</button>
         </div>
       </div>
 
@@ -150,10 +129,10 @@ export default function AdminPanel() {
           </button>
         </div>
 
-        {/* BLOCK 3: DANGER ZONE (TOMBOL HAPUS) */}
+        {/* BLOCK 3: DANGER ZONE */}
         <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '30px', borderRadius: '16px', border: '1px solid #ef4444' }}>
           <h3 style={{ marginTop: 0, color: '#ef4444' }}>03. DANGER ZONE</h3>
-          <p style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '20px' }}>Hati-hati Bos, tindakan ini nggak bisa dibatalin.</p>
+          <p style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '20px' }}>Hapus data yang nggak perlu biar dashboard lu tetep enteng.</p>
           <div style={{ display: 'flex', gap: '15px' }}>
             <button disabled={loading} onClick={deleteHistory} style={{ flex: 1, padding: '15px', backgroundColor: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 'bold', borderRadius: '8px' }}>
               {loading ? 'CLEANING...' : 'HAPUS HISTORY COIN'}
