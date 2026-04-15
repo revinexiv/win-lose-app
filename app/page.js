@@ -24,6 +24,7 @@ export default function Home() {
 
   const fetchData = async () => {
     setLoading(true)
+    console.log("--- START DEBUGGING RIKU ---")
     try {
       const { data: { user } } = await supabase.auth.getUser()
       
@@ -33,10 +34,13 @@ export default function Home() {
         .eq('user_id', user?.id)
         
       if (!watchList || watchList.length === 0) {
+        console.warn("DEBUG: Watchlist kosong di database lu!");
         setRekap([])
         setLoading(false)
         return
       }
+
+      console.log(`DEBUG: Total ID di Watchlist lu ada: ${watchList.length}`);
 
       const summaryMap = new Map()
       watchList.forEach(item => {
@@ -44,7 +48,6 @@ export default function Home() {
         summaryMap.set(cleanName, { name: cleanName, total: 0, count: 0 })
       })
 
-      // --- TEKNIK ANTI LIMIT (LOOP FETCH) ---
       let allHistory = []
       let from = 0
       let to = 999
@@ -64,41 +67,63 @@ export default function Home() {
         } else {
           hasMore = false
         }
-        // Safety break biar ga infinity loop
         if (from > 100000) break 
       }
 
-      // --- PROSES HITUNG TOTAL DATA (16RB+ RECORD) ---
+      console.log(`DEBUG: Berhasil tarik total ${allHistory.length} data history.`);
+
+      let mismatchCount = 0;
+      let statusMismatch = new Set();
+
       for (let i = 0; i < allHistory.length; i++) {
         const item = allHistory[i]
         const rawName = item.TO ? item.TO.toString().toUpperCase().trim() : ''
         
-        if (summaryMap.has(rawName)) {
-          const amount = parseFloat(item.Coin) || 0
-          const info = item.Info ? item.Info.toString().toUpperCase().trim() : ''
-          
-          if (info.includes('REJECT') || info.includes('CANCEL')) continue
-
-          const stats = summaryMap.get(rawName)
-          if (info.includes('WITHDRAW')) {
-            stats.total -= amount
-            stats.count += 1
-          } else if (info.includes('DEPOSIT')) {
-            stats.total += amount
-            stats.count += 1
-          }
+        // 1. CEK APAKAH ID COCOK DENGAN WATCHLIST
+        if (!summaryMap.has(rawName)) {
+          mismatchCount++;
+          // Lu bisa liat ID apa aja yang ga kedaftar di watchlist tapi ada di history
+          // console.log(`MISMATCH: ID ${rawName} ada di history tapi ga ada di Watchlist.`);
+          continue
         }
+
+        const amount = parseFloat(item.Coin) || 0
+        const info = item.Info ? item.Info.toString().toUpperCase().trim() : ''
+        
+        if (info.includes('REJECT') || info.includes('CANCEL')) continue
+
+        const stats = summaryMap.get(rawName)
+        
+        // 2. CEK APAKAH STATUSNYA BENERAN DEPO/WD
+        if (info.includes('WITHDRAW')) {
+          stats.total -= amount
+          stats.count += 1
+        } else if (info.includes('DEPOSIT')) {
+          stats.total += amount
+          stats.count += 1
+        } else {
+          // Kalau ada status sukses selain Depo/WD, dia bakal kedaftar di sini
+          statusMismatch.add(info);
+        }
+      }
+
+      console.log(`DEBUG: Ada ${mismatchCount} baris data yang ID-nya ga cocok sama Watchlist.`);
+      if (statusMismatch.size > 0) {
+        console.log("DEBUG: Status transaksi lain yang terdeteksi:", Array.from(statusMismatch));
       }
 
       const activePlayers = Array.from(summaryMap.values())
         .filter(player => player.count > 0)
         .sort((a, b) => a.name.localeCompare(b.name))
 
+      console.log(`DEBUG: Total ID yang akhirnya muncul (Active): ${activePlayers.length}`);
+      console.log("--- END DEBUGGING ---")
+
       setRekap(activePlayers)
       setCurrentPage(1)
       
     } catch (err) {
-      console.error(err)
+      console.error("DEBUG ERROR:", err)
       alert("Error Syncing: " + err.message)
     } finally {
       setLoading(false)
@@ -117,7 +142,7 @@ export default function Home() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '40px', borderBottom: '1px solid #1e293b', paddingBottom: '20px' }}>
         <div>
           <h1 style={{ fontSize: '32px', fontWeight: '900', color: '#38bdf8', textShadow: '0 0 20px rgba(56, 189, 248, 0.4)', margin: 0 }}>CLouds Monitor <span style={{ color: '#f8fafc', fontWeight: '200' }}>V1</span></h1>
-          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>ACTIVE</span></p>
+          <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '5px' }}>Database Sync: <span style={{ color: '#00ff88' }}>ACTIVE (DEBUG MODE)</span></p>
         </div>
         <div style={{ display: 'flex', gap: '15px' }}>
           <button onClick={() => window.location.href = '/admin'} style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '1px solid #38bdf8', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: 'bold' }}>ADMIN</button>
@@ -127,7 +152,7 @@ export default function Home() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '100px' }}>
-          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>LOADING 16,000+ RECORDS...</p>
+          <p style={{ color: '#38bdf8', letterSpacing: '2px' }}>RUNNING CORE DIAGNOSTICS...</p>
         </div>
       ) : (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
