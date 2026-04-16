@@ -9,7 +9,7 @@ export default function AdminPanel() {
   const [listPlayerIds, setListPlayerIds] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // 1. UPLOAD CSV HISTORY
+  // 1. UPLOAD CSV HISTORY (WITH EXTRA CLEANING & CHUNKING)
   const handleUpload = async () => {
     if (!csvText) return alert('Isi dulu datanya, Bos!')
     const { data: { user } } = await supabase.auth.getUser()
@@ -17,46 +17,78 @@ export default function AdminPanel() {
 
     setLoading(true)
     try {
+      // Split baris & hapus baris kosong
       const rows = csvText.split('\n').filter(row => row.trim() !== '')
+      
+      // Lewati header (slice 1) dan proses pembersihan
       const dataToInsert = rows.slice(1).map(row => {
-        const col = row.split(',')
+        // Regex untuk split koma tapi abaikan koma di dalam tanda kutip
+        const col = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+        
+        // Membersihkan ID Player (TO) dari semua spasi dan karakter aneh
+        // Hanya menyisakan Huruf dan Angka
+        const cleanTo = col[2]?.replace(/"/g, '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().trim()
+        
+        if (!cleanTo) return null
+
         return {
           "Date ": col[0]?.replace(/"/g, '').trim(),
           "Info": col[1]?.replace(/"/g, '').trim(),
-          "TO": col[2]?.replace(/"/g, '').trim(),
+          "TO": cleanTo,
           "BY": col[3]?.replace(/"/g, '').trim(),
-          "Coin": parseFloat(col[4]) || 0,
-          "Last Coin": parseFloat(col[5]) || 0,
+          "Coin": parseFloat(col[4]?.replace(/"/g, '').replace(/,/g, '')) || 0,
+          "Last Coin": parseFloat(col[5]?.replace(/"/g, '').replace(/,/g, '')) || 0,
           "user_id": user.id
         }
-      }).filter(item => item["TO"])
+      }).filter(item => item !== null)
 
-      const { error } = await supabase.from('coin_history').upsert(dataToInsert)
-      if (error) throw error
+      // Upload Bertahap (Per 500 Baris) agar tidak gagal/timeout
+      const chunkSize = 500
+      for (let i = 0; i < dataToInsert.length; i += chunkSize) {
+        const chunk = dataToInsert.slice(i, i + chunkSize)
+        const { error } = await supabase.from('coin_history').upsert(chunk)
+        if (error) throw error
+        console.log(`Uploaded chunk ${i / chunkSize + 1} (${chunk.length} rows)`)
+      }
 
-      alert('Upload Berhasil! Dashboard otomatis update sekarang.')
+      alert(`Mantap Bos Riku! ${dataToInsert.length} baris history sudah BERSIH dan masuk.`)
       setCsvText('')
     } catch (err) {
-      alert('Error: ' + err.message)
+      console.error(err)
+      alert('Error Upload: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  // 2. REGISTER MULTIPLE PLAYER IDS
+  // 2. REGISTER MULTIPLE PLAYER IDS (WITH EXTRA CLEANING)
   const addMultiplePlayers = async () => {
     if (!listPlayerIds) return alert('Isi dulu list ID-nya!')
     const { data: { user } } = await supabase.auth.getUser()
+    
     setLoading(true)
     try {
-      const rawIds = listPlayerIds.split(/[\n,]+/).map(id => id.trim()).filter(id => id !== '')
+      // Pisahkan pakai koma atau enter, hapus SEMUA karakter selain huruf/angka
+      const rawIds = listPlayerIds
+        .split(/[\n,]+/) 
+        .map(id => id.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().trim())
+        .filter(id => id !== '')
+
+      // Hilangkan duplikat
       const uniqueIds = [...new Set(rawIds)]
-      const dataToInsert = uniqueIds.map(id => ({ player_id: id, user_id: user.id }))
       
-      const { error } = await supabase.from('monitored_players').upsert(dataToInsert)
+      const dataToInsert = uniqueIds.map(id => ({ 
+        player_id: id, 
+        user_id: user.id 
+      }))
+      
+      const { error } = await supabase.from('monitored_players').upsert(dataToInsert, {
+        onConflict: 'user_id, player_id'
+      })
+
       if (error) throw error
 
-      alert(`Mantap! ${uniqueIds.length} ID berhasil didaftarkan ke Watchlist.`)
+      alert(`Gokil! ${uniqueIds.length} ID Player berhasil dibersihkan & didaftarkan.`)
       setListPlayerIds('')
     } catch (err) {
       alert('Gagal: ' + err.message)
@@ -67,9 +99,8 @@ export default function AdminPanel() {
 
   // 3. DELETE HISTORY COIN ONLY
   const deleteHistory = async () => {
-    const yakin = confirm("Yakin mau hapus SEMUA HISTORY COIN lu, Bos Riku? ID Watchlist tetep aman kok.")
+    const yakin = confirm("Yakin mau hapus SEMUA HISTORY COIN lu, Bos Riku?")
     if (!yakin) return
-    
     const { data: { user } } = await supabase.auth.getUser()
     setLoading(true)
     try {
@@ -83,11 +114,10 @@ export default function AdminPanel() {
     }
   }
 
-  // 4. DELETE ALL WATCHLIST (ID PLAYER)
+  // 4. DELETE ALL WATCHLIST
   const deleteWatchlist = async () => {
     const yakin = confirm("Semua daftar ID PLAYER lu bakal dihapus. Yakin?")
     if (!yakin) return
-
     const { data: { user } } = await supabase.auth.getUser()
     setLoading(true)
     try {
@@ -111,35 +141,29 @@ export default function AdminPanel() {
       </div>
 
       <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-        {/* BLOCK 1: UPLOAD CSV */}
         <div style={{ background: 'rgba(30, 41, 59, 0.4)', padding: '30px', borderRadius: '16px', marginBottom: '25px', border: '1px solid #334155', backdropFilter: 'blur(10px)' }}>
           <h3 style={{ marginTop: 0, color: '#00ff88' }}>01. DATA INJECTION (CSV)</h3>
-          <textarea style={{ width: '100%', background: '#000', color: '#00ff88', padding: '15px', border: '1px solid #1e293b', borderRadius: '8px', fontFamily: 'monospace', boxSizing: 'border-box' }} rows="6" value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder='Paste CSV here...' />
+          <p style={{fontSize:'12px', color: '#94a3b8', marginBottom: '10px'}}>Paste CSV lu di sini. Sistem otomatis hapus spasi kotor di ID Player.</p>
+          <textarea style={{ width: '100%', background: '#000', color: '#00ff88', padding: '15px', border: '1px solid #1e293b', borderRadius: '8px', fontFamily: 'monospace', boxSizing: 'border-box' }} rows="6" value={csvText} onChange={(e) => setCsvText(e.target.value)} placeholder='Date, Info, TO, BY, Coin, Last Coin...' />
           <button disabled={loading} onClick={handleUpload} style={{ marginTop: '15px', padding: '12px 30px', backgroundColor: '#00ff88', border: 'none', cursor: 'pointer', fontWeight: '900', borderRadius: '8px', color: '#020617' }}>
-            {loading ? 'EXECUTING...' : 'UPLOAD & SYNC'}
+            {loading ? 'EXECUTING CLEANING...' : 'UPLOAD & CLEAN SYNC'}
           </button>
         </div>
 
-        {/* BLOCK 2: REGISTER PROTOCOLS */}
         <div style={{ background: 'rgba(30, 41, 59, 0.4)', padding: '30px', borderRadius: '16px', marginBottom: '25px', border: '1px solid #334155', backdropFilter: 'blur(10px)' }}>
-          <h3 style={{ marginTop: 0, color: '#38bdf8' }}>02. PROTOCOL REGISTRATION</h3>
+          <h3 style={{ marginTop: 0, color: '#38bdf8' }}>02. PROTOCOL REGISTRATION (LIST ID)</h3>
+          <p style={{fontSize:'12px', color: '#94a3b8', marginBottom: '10px'}}>Masukkan list ID. Spasi atau simbol bakal dihapus otomatis.</p>
           <textarea style={{ width: '100%', background: '#000', color: '#fff', padding: '15px', border: '1px solid #1e293b', borderRadius: '8px', fontFamily: 'monospace', boxSizing: 'border-box' }} rows="4" value={listPlayerIds} onChange={(e) => setListPlayerIds(e.target.value)} placeholder="Ex: player123, player456..." />
           <button disabled={loading} onClick={addMultiplePlayers} style={{ marginTop: '15px', padding: '12px 30px', backgroundColor: '#38bdf8', color: '#020617', border: 'none', cursor: 'pointer', fontWeight: '900', borderRadius: '8px' }}>
-            REGISTER PROTOCOLS
+            REGISTER CLEAN PROTOCOLS
           </button>
         </div>
 
-        {/* BLOCK 3: DANGER ZONE */}
         <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '30px', borderRadius: '16px', border: '1px solid #ef4444' }}>
           <h3 style={{ marginTop: 0, color: '#ef4444' }}>03. DANGER ZONE</h3>
-          <p style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '20px' }}>Hapus data yang nggak perlu biar dashboard lu tetep enteng.</p>
           <div style={{ display: 'flex', gap: '15px' }}>
-            <button disabled={loading} onClick={deleteHistory} style={{ flex: 1, padding: '15px', backgroundColor: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 'bold', borderRadius: '8px' }}>
-              {loading ? 'CLEANING...' : 'HAPUS HISTORY COIN'}
-            </button>
-            <button disabled={loading} onClick={deleteWatchlist} style={{ flex: 1, padding: '15px', backgroundColor: 'transparent', color: '#ef4444', border: '1px solid #ef4444', cursor: 'pointer', fontWeight: 'bold', borderRadius: '8px' }}>
-              {loading ? 'CLEANING...' : 'HAPUS LIST ID PLAYER'}
-            </button>
+            <button disabled={loading} onClick={deleteHistory} style={{ flex: 1, padding: '15px', backgroundColor: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 'bold', borderRadius: '8px' }}>HAPUS SEMUA HISTORY</button>
+            <button disabled={loading} onClick={deleteWatchlist} style={{ flex: 1, padding: '15px', backgroundColor: 'transparent', color: '#ef4444', border: '1px solid #ef4444', cursor: 'pointer', fontWeight: 'bold', borderRadius: '8px' }}>KOSONGKAN WATCHLIST</button>
           </div>
         </div>
       </div>
