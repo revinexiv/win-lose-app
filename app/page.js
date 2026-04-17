@@ -24,54 +24,54 @@ export default function Home() {
 
   const fetchData = async () => {
     setLoading(true)
-    console.log("%c--- STARTING PRECISE DATABASE SYNC ---", "color: #38bdf8; font-weight: bold; font-size: 14px;");
-    
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error("User session not found");
 
-      console.time("Server Execution Time");
-      console.log(`DEBUG: Executing RPC 'get_precise_rekap' for User ID: ${user.id}`);
-
-      // 1. PANGGIL FUNGSI RPC (Itungan dilakukan 100% di Server Supabase)
-      // Ini bakal tembus jutaan data tanpa bikin browser lemot
       const { data, error } = await supabase.rpc('get_precise_rekap', { 
         p_user_id: user.id 
       })
 
-      console.timeEnd("Server Execution Time");
+      if (error) throw error;
 
-      if (error) {
-        console.error("%cRPC ERROR:", "color: #ff4444; font-weight: bold;", error);
-        throw error;
-      }
-
-      // 2. DEBUG LOGS UNTUK VALIDASI
-      if (data) {
-        console.log(`%cSUCCESS: Received ${data.length} Players with transactions.`, "color: #00ff88; font-weight: bold;");
-        
-        // Cek sample data di console
-        if (data.length > 0) {
-          console.table(data.slice(0, 5)); // Tampilkan 5 baris pertama untuk audit cepat
-        }
-
-        const totalTransactions = data.reduce((sum, item) => sum + parseInt(item.transaction_count), 0);
-        console.log(`DEBUG: Total Transactions Processed: ${totalTransactions.toLocaleString()}`);
-      }
-
-      // 3. SORTING (Paling terakhir biar rapi)
       const sortedData = (data || []).sort((a, b) => a.player_id.localeCompare(b.player_id));
-
       setRekap(sortedData);
       setCurrentPage(1);
       
     } catch (err) {
-      console.error("%cFATAL ERROR:", "color: #ff4444; font-weight: bold;", err.message);
+      console.error(err.message);
       alert("Error Syncing: " + err.message);
     } finally {
       setLoading(false)
     }
   }
+
+  // --- FITUR DOWNLOAD REPORT (FULL TRACKING) ---
+  const downloadReport = () => {
+    if (!rekap || rekap.length === 0) return alert('Gak ada data buat didownload, Bos!');
+
+    // Header sesuai request (huruf kecil)
+    const header = "id,net profit/loss,ops\n";
+
+    // Mapping data dari state 'rekap' (full data, bukan currentItems)
+    const csvContent = rekap.map(item => {
+      const id = String(item.player_id).toLowerCase();
+      const profit = String(item.total_profit).toLowerCase();
+      const ops = String(item.transaction_count).toLowerCase();
+      return `${id},${profit},${ops}`;
+    }).join("\n");
+
+    const fullCsv = header + csvContent;
+    const blob = new Blob([fullCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `report_all_protocols_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const totalGlobal = rekap.reduce((sum, item) => sum + parseFloat(item.total_profit), 0)
   const totalPages = Math.ceil(rekap.length / itemsPerPage)
@@ -88,7 +88,15 @@ export default function Home() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '15px' }}>
-          <button onClick={() => window.location.href = '/admin'} style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '1px solid #38bdf8', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: 'bold' }}>ADMIN</button>
+          {/* TOMBOL DOWNLOAD REPORT */}
+          <button 
+            onClick={downloadReport} 
+            style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '1px solid #38bdf8', background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', fontWeight: 'bold' }}
+          >
+            DOWNLOAD REPORT
+          </button>
+          
+          <button onClick={() => window.location.href = '/admin'} style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: '1px solid #94a3b8', background: 'rgba(148, 163, 184, 0.1)', color: '#94a3b8', fontWeight: 'bold' }}>ADMIN</button>
           <button onClick={fetchData} style={{ padding: '12px 24px', cursor: 'pointer', borderRadius: '8px', border: 'none', background: '#38bdf8', color: '#020617', fontWeight: 'bold' }}>REFRESH</button>
         </div>
       </div>
@@ -96,7 +104,6 @@ export default function Home() {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '100px' }}>
           <p style={{ color: '#38bdf8', letterSpacing: '2px', fontWeight: 'bold' }}>EXECUTING PRECISE SERVER-SIDE CALCULATION...</p>
-          <p style={{ color: '#64748b', fontSize: '12px' }}>Scanning millions of records for your team...</p>
         </div>
       ) : (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
